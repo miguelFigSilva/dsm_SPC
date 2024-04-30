@@ -1,16 +1,12 @@
-import numpy as np
-import pandas as pd
+import river
 import matplotlib.pyplot as plt
 
-from river import compat
-from river import evaluate
-from river import metrics
-from river import preprocessing
-from river import stream
-from sklearn import linear_model
-from river import tree
-from sklearn import datasets
 
+status_dict = {
+    "In-control"   : 0,
+    "Warning Level": 1,
+    "Out-control"  : 2
+}
 
 class SPCAlgorithm:
     def __init__(self, init_estimator):
@@ -22,6 +18,9 @@ class SPCAlgorithm:
         self.init_estimator = init_estimator
         self.reset_model()
         self.warn = -1
+        self.warning_level = []
+        self.drift_level = []
+        self.states = []
 
     def update(self, y):
         # Update counts
@@ -37,9 +36,11 @@ class SPCAlgorithm:
             self.Smin = s
         #print(f"{p}, {s}, {self.Pmin}, {self.Smin}")
         # Check process status
+        self.warning_level.append(self.Pmin + 2 * self.Smin)        
+        self.drift_level.append(self.Pmin + 3 * self.Smin)
         if p + s < self.Pmin + 2 * self.Smin:
             status = "In-control"
-        elif p + s > self.Pmin + 3 * self.Smin:
+        elif p + s >= self.Pmin + 3 * self.Smin:
             status = "Out-control"
         else:
             status = "Warning Level"
@@ -56,7 +57,7 @@ class SPCAlgorithm:
     
     def reset_model(self):
         self.model = self.init_estimator()
-    
+
     def model_control(self, data, sample_id):
         x = data.iloc[sample_id, :-1]
         y = data.iloc[sample_id, -1]
@@ -72,5 +73,28 @@ class SPCAlgorithm:
         else:
             self.model_train(data.iloc[sample_id,:])
         
+        self.states.append(status_dict[status])
         return status, y, y_pred
-    
+
+    def process_plot(self):
+        # Plotting
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        # Plot
+        ax1.plot(range(1, len(self.error_rates) + 1), self.error_rates, marker='o', markersize=1, label='Error Rate')
+        ax1.plot(range(1, len(self.warning_level) + 1), self.warning_level, color='r', linestyle='--', label='Warning Level')
+        ax1.plot(range(1, len(self.drift_level) + 1), self.drift_level, color='g', linestyle='--', label='Drift Level')
+        ax1.set_xlabel('Number of processed samples')
+        ax1.set_ylabel('Error rate')
+        ax1.set_title('Error Rate Across Processed Samples with SPC Indicators')
+        ax1.grid(True)
+        ax1.legend()
+        # Plotting states
+        ax2.plot(range(1, len(self.states) + 1), self.states, marker='o', linestyle='-', color='b')
+        ax2.set_xlabel('Number of processed samples')
+        ax2.set_ylabel('State')
+        ax2.set_title('State Across Processed Samples')
+        ax2.set_yticks([0, 1, 2])
+        ax2.set_yticklabels(['Normal', 'Warning', 'Out of Control'])
+        ax2.grid(True)
+        plt.tight_layout()
+        plt.show()
