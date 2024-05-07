@@ -28,17 +28,18 @@ class SPCAlgorithm:
         self.ss = [] # debug
         self.Pmins = [] # debug
         self.Smins = [] # debug
+        self.window = []
 
     def _update(self, y):
-        # Update counts
+        # update counts
         self.num_examples += 1
         if (y == False):
             self.num_negative += 1
-        # Calculate p and s
+            
         p = self.num_negative / self.num_examples
         s = (p * (1 - p) / self.num_examples) ** 0.5
 
-        # Check process status
+        # check process status
         if p + s >= self.Pmin + 3 * self.Smin:
             status = "Out-control"
         elif p + s >= self.Pmin + 2 * self.Smin:
@@ -52,7 +53,7 @@ class SPCAlgorithm:
         self.Pmins.append(self.Pmin)
         self.Smins.append(self.Smin)
 
-        # Update Pmin and Smin
+        # update Pmin and Smin
         if p+s != 0.0 and p + s < self.Pmin + self.Smin:
             self.Pmin = min(p, self.Pmin) # p
             self.Smin = (self.Pmin * (1 - self.Pmin) / self.num_examples) ** 0.5 # s
@@ -61,20 +62,13 @@ class SPCAlgorithm:
         return status, p, s
 
     def _exponential_smoothing_update(self, y, alpha=0.9):
-        # Update counts
+        # update counts
         self.num_examples += 1
-        
-        # Calculate p and s
-        #try:
-        #    p = self.ps[-1]*((self.num_examples-1)/self.num_examples)*alpha + (1-alpha)*((y == False)+0) / self.num_examples
-        #except:
-            # first iteration
-        #    p = ((y == False)+0) / self.num_examples
         p = (alpha*self.num_negative + (y == False)+0)/self.num_examples
         s = (p * (1 - p) / self.num_examples) ** 0.5
         self.num_negative += (y == False)+0
         
-        # Check process status
+        # check process status
         if p + s >= self.Pmin + 3 * self.Smin:
             status = "Out-control"
         elif p + s >= self.Pmin + 2 * self.Smin:
@@ -88,7 +82,7 @@ class SPCAlgorithm:
         self.Pmins.append(self.Pmin)
         self.Smins.append(self.Smin)
 
-        # Update Pmin and Smin
+        # update Pmin and Smin
         if p+s != 0.0 and p + s < self.Pmin + self.Smin:
             self.Pmin = min(p, self.Pmin) # p
             self.Smin = (self.Pmin * (1 - self.Pmin) / self.num_examples) ** 0.5 # s
@@ -96,6 +90,45 @@ class SPCAlgorithm:
         
         return status, p, s
         
+    
+    def _sliding_window_update(self, y, max_window_size=100):
+        # update window
+        self.window.append(y)
+        if len(self.window) > max_window_size:
+            self.window.pop(0)
+
+        # Update counts
+        self.num_examples += 1
+        if not y:
+            self.num_negative += 1
+
+        # Calculate p and s using only the window
+        window_size = len(self.window)
+        p = self.window.count(False) / window_size if window_size > 0 else 0
+        s = (p * (1 - p) / window_size) ** 0.5
+
+        # check process status
+        if p + s >= self.Pmin + 3 * self.Smin:
+            status = "Out-control"
+        elif p + s >= self.Pmin + 2 * self.Smin:
+            status = "Warning Level"
+        else:
+            status = "In-control"
+            self.warn = -1  # false alarm error keeps decreasing
+
+        self.warning_level.append(self.Pmin + 2 * self.Smin)
+        self.drift_level.append(self.Pmin + 3 * self.Smin)
+        self.Pmins.append(self.Pmin)
+        self.Smins.append(self.Smin)
+
+        # update Pmin and Smin
+        if p + s != 0.0 and p + s < self.Pmin + self.Smin:
+            self.Pmin = min(p, self.Pmin)  # p
+            self.Smin = (self.Pmin * (1 - self.Pmin) / window_size) ** 0.5  # s
+            self.warn = -1  # false alarm error keeps decreasing
+
+        return status, p, s
+    
 
     def _model_train(self, data):
         if len(data.shape) > 1:
@@ -113,13 +146,15 @@ class SPCAlgorithm:
         self.model = self._init_estimator()
 
 
-    def model_control(self, data, sample_id, exponential=False, alpha=0.9):
+    def model_control(self, data, sample_id, exponential=False, alpha=0.9, sliding_window=False, window_size=100):
         x = data.iloc[sample_id, :-1]
         y = data.iloc[sample_id, -1]
         y_pred = self.model.predict_one(x)
 
         if exponential: 
             status, p, s = self._exponential_smoothing_update(y_pred==y, alpha=alpha)
+        elif sliding_window:
+            status, p, s = self._sliding_window_update(y_pred==y, max_window_size=window_size)
         else:
             status, p, s = self._update(y_pred==y)
             
