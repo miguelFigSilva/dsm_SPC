@@ -100,18 +100,16 @@ class SPCAlgorithm:
     def _sliding_window_update(self, y, max_window_size=100):
         # update window
         self.window.append(y)
-        if len(self.window) > max_window_size:
-            self.window.pop(0)
+        window_size = min(max_window_size, len(self.window))
+        relevant_window = self.window[-window_size:]
 
         # Update counts
-        self.num_examples += 1
-        if not y:
-            self.num_negative += 1
+        self.num_examples = len(relevant_window)
+        self.num_negative = relevant_window.count(False)
 
         # Calculate p and s using only the window
-        window_size = len(self.window)
-        p = self.window.count(False) / window_size if window_size > 1 else 0
-        s = (p * (1 - p) / window_size) ** 0.5 if window_size > 1 else 0
+        p = self.num_negative / self.num_examples
+        s = (p * (1 - p) / self.num_examples) ** 0.5
 
         # check process status
         if p + s >= self.Pmin + 3 * self.Smin:
@@ -120,18 +118,18 @@ class SPCAlgorithm:
             status = "Warning Level"
         else:
             status = "In-control"
-            self.warn = -1  # false alarm error keeps decreasing
-
-        self.warning_level.append(self.Pmin + 2 * self.Smin)
+            self.warn = -1 # false alarm error keeps decreasing
+                
+        self.warning_level.append(self.Pmin + 2 * self.Smin)        
         self.drift_level.append(self.Pmin + 3 * self.Smin)
         self.Pmins.append(self.Pmin)
         self.Smins.append(self.Smin)
 
         # update Pmin and Smin
-        if p + s != 0.0 and p + s < self.Pmin + self.Smin and window_size > 1:
-            self.Pmin = min(p, self.Pmin)  # p
-            self.Smin = (self.Pmin * (1 - self.Pmin) / window_size) ** 0.5 if window_size > 0 else 0 # s
-            self.warn = -1  # false alarm error keeps decreasing
+        if p+s != 0.0 and p + s < self.Pmin + self.Smin:
+            self.Pmin = min(p, self.Pmin) # p
+            self.Smin = (self.Pmin * (1 - self.Pmin) / self.num_examples) ** 0.5 # s
+            self.warn = -1 # false alarm error keeps decreasing
 
         return status, p, s
     
@@ -176,13 +174,11 @@ class SPCAlgorithm:
         elif status == 'Out-control':
             self._reset_model()
             if self.warn == -1: self.warn = sample_id
-            
-            low_bound = self.warn
-            if sliding_window:
-                if sample_id+1 - self.warn > window_size:
-                    low_bound = sample_id+1 - window_size            
-            
             self._model_train(data.iloc[self.warn:sample_id+1,:])
+
+            low_bound = self.warn # default
+            if sliding_window:
+                low_bound = max(self.warn, sample_id+1-window_size)
 
             n, e = 0, 0
             for i in range(low_bound,sample_id+1):
@@ -201,10 +197,10 @@ class SPCAlgorithm:
             self.num_negative = e
             self.Pmin = p
             self.Smin = s
-            self.Pmins[-1] = self.Pmin
-            self.Smins[-1] = self.Smin
+            self.Pmins[-1] = p
+            self.Smins[-1] = s
             self.warn = -1
-            self.window = self.window[low_bound:]
+            self.window = self.window[-low_bound:]
             
         else:
             self._model_train(data.iloc[sample_id,:])
