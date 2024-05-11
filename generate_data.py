@@ -21,7 +21,7 @@ relevant_feature_indices = [0,1]
 features = np.random.uniform(0, 10, size=(num_samples, num_features))
 
 # Generate synthetic labels based on concepts
-labels_concept1 = (features[:half_samples, relevant_feature_indices].sum(axis=1) > 7).astype(int)
+labels_concept1 = (features[:half_samples, relevant_feature_indices].sum(axis=1) > 5).astype(int) # > 7 initially
 labels_concept2 = (features[half_samples:, relevant_feature_indices].sum(axis=1) > 9).astype(int)
 
 # Introduce noise (10% of samples)
@@ -50,7 +50,7 @@ synthetic_df = pd.DataFrame(synthetic_dataset, columns=column_names)
 PATH = os.path.dirname(os.path.abspath(__file__))
 folder_path = f"{PATH}/data"
 os.makedirs(folder_path, exist_ok=True)
-file_name = "synthetic_dataset.csv"
+file_name = "synthetic_dataset_1.csv"
 synthetic_df.to_csv(f"{folder_path}/{file_name}", index=False)
 
 

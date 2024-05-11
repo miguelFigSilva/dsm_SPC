@@ -62,11 +62,17 @@ class SPCAlgorithm:
         return status, p, s
 
     def _exponential_smoothing_update(self, y, alpha=0.9):
+        # update statistics
+        fading_sum = alpha*self.num_negative + (y == False)+0
+        fading_increment = alpha*self.num_examples + 1
+
         # update counts
-        self.num_examples += 1
-        p = (alpha*self.num_negative + (y == False)+0)/self.num_examples
-        s = (p * (1 - p) / self.num_examples) ** 0.5
         self.num_negative += (y == False)+0
+        self.num_examples += 1
+        
+        p = fading_sum/fading_increment
+        s = (p * (1 - p) / self.num_examples) ** 0.5
+
         
         # check process status
         if p + s >= self.Pmin + 3 * self.Smin:
@@ -250,7 +256,7 @@ def live_error(error, ranges, drifts, size=100, screen=None, fig=None):
     plt.vlines(x=[d-1 for d in drifts if d-1 >= ranges[0] and d-1 <= ranges [-1]],
                    ymin=min(error)-0.001, ymax=max(error)+0.001, label='Detected Drift',
                    linestyle='--', color='red')
-    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.21), ncols=2)
+    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.25), ncols=2)
     
     #if [d-1 for d in real if d-1 >= ranges[0] and d-1 <= ranges [-1]] != []:
     #    for point in [(d-1, error[d%500]) for d in real if d-1 >= ranges[0] and d-1 <= ranges [-1]]:
@@ -280,18 +286,22 @@ def error_analysis_plot(spc_detector, baseline, N, E, model_name):
     ax1.plot(N[1:], np.array(E[1:])/np.array(N[1:]), color='lightgreen', label=f"{model_name}\nwith SPC Error")
     ax1.plot(N[1:], baseline, color='salmon', label=f"Baseline {model_name} Error")
 
+    lower_bound = min(min(min(spc_detector.ps[5:]), min(baseline[5:]), min((np.array(E[1:])/np.array(N[1:]))[5:])) - 0.01, 0.1)
+    upper_bound = max(max(max(spc_detector.ps[250:]), max(baseline[250:]), max((np.array(E[1:])/np.array(N[1:]))[250:])) + 0.01, 0.2)
+
     ax2.plot(N[1:], np.array(spc_detector.ps), label='SPC Error')
+    #ax2.plot(N[1:], np.array(spc_detector.ps) + np.array(spc_detector.ss), label='SPC Error - boundary', linestyle='dashed', color='C0')
     ax2.fill_between(N[1:], np.array(spc_detector.Pmins), np.array(spc_detector.Pmins) + np.array(spc_detector.Smins),
                     alpha=0.3, color='lightgreen', label='In-control')
     ax2.fill_between(N[1:], np.array(spc_detector.Pmins) + np.array(spc_detector.Smins),
                             np.array(spc_detector.Pmins) + 2*np.array(spc_detector.Smins), alpha=0.3, color='gold', label='Warning-level')
     ax2.fill_between(N[1:], np.array(spc_detector.Pmins) + 2*np.array(spc_detector.Smins),
                             np.array(spc_detector.Pmins) + 3*np.array(spc_detector.Smins), alpha=0.3, color='salmon', label='Out-control')
-    ax2.vlines([i for i in range(len(spc_detector.states)) if spc_detector.states[i] == 2], ymin=0.1, ymax=0.2,
+    ax2.vlines([i for i in range(len(spc_detector.states)) if spc_detector.states[i] == 2], ymin=lower_bound, ymax=upper_bound,
             color='grey', linestyles='dashed', label='Drift detected')
 
-    ax1.set_ylim(0.1, 0.2)
-    ax2.set_ylim(0.1, 0.2)
+    ax1.set_ylim(lower_bound, upper_bound)
+    ax2.set_ylim(lower_bound, upper_bound)
     ax1.legend(loc='upper right', bbox_to_anchor=(1.2, 1.0))
     ax2.legend(loc='upper right', bbox_to_anchor=(1.2, 1.0))
     ax1.set_title(f"SPC and {model_name} Error")
