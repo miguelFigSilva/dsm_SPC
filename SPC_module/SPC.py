@@ -110,8 +110,8 @@ class SPCAlgorithm:
 
         # Calculate p and s using only the window
         window_size = len(self.window)
-        p = self.window.count(False) / window_size if window_size > 0 else 0
-        s = (p * (1 - p) / window_size) ** 0.5
+        p = self.window.count(False) / window_size if window_size > 1 else 0
+        s = (p * (1 - p) / window_size) ** 0.5 if window_size > 1 else 0
 
         # check process status
         if p + s >= self.Pmin + 3 * self.Smin:
@@ -128,9 +128,9 @@ class SPCAlgorithm:
         self.Smins.append(self.Smin)
 
         # update Pmin and Smin
-        if p + s != 0.0 and p + s < self.Pmin + self.Smin:
+        if p + s != 0.0 and p + s < self.Pmin + self.Smin and window_size > 1:
             self.Pmin = min(p, self.Pmin)  # p
-            self.Smin = (self.Pmin * (1 - self.Pmin) / window_size) ** 0.5  # s
+            self.Smin = (self.Pmin * (1 - self.Pmin) / window_size) ** 0.5 if window_size > 0 else 0 # s
             self.warn = -1  # false alarm error keeps decreasing
 
         return status, p, s
@@ -176,10 +176,16 @@ class SPCAlgorithm:
         elif status == 'Out-control':
             self._reset_model()
             if self.warn == -1: self.warn = sample_id
+            
+            low_bound = self.warn
+            if sliding_window:
+                if sample_id+1 - self.warn > window_size:
+                    low_bound = sample_id+1 - window_size            
+            
             self._model_train(data.iloc[self.warn:sample_id+1,:])
 
             n, e = 0, 0
-            for i in range(self.warn,sample_id+1):
+            for i in range(low_bound,sample_id+1):
                 x = data.iloc[i, :-1]
                 y = data.iloc[i, -1]
                 y_pred = self.model.predict_one(x)
@@ -195,9 +201,10 @@ class SPCAlgorithm:
             self.num_negative = e
             self.Pmin = p
             self.Smin = s
-            self.Pmins[-1] = p
-            self.Smins[-1] = s
+            self.Pmins[-1] = self.Pmin
+            self.Smins[-1] = self.Smin
             self.warn = -1
+            self.window = self.window[low_bound:]
             
         else:
             self._model_train(data.iloc[sample_id,:])
