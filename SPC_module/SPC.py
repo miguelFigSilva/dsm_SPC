@@ -174,19 +174,21 @@ class SPCAlgorithm:
         elif status == 'Out-control':
             self._reset_model()
             if self.warn == -1: self.warn = sample_id
-            self._model_train(data.iloc[self.warn:sample_id+1,:])
 
             low_bound = self.warn # default
             if sliding_window:
                 low_bound = max(self.warn, sample_id+1-window_size)
+                
+            self._model_train(data.iloc[low_bound:sample_id+1,:])
 
-            n, e = 0, 0
+            n, e, new_window = 0, 0, []
             for i in range(low_bound,sample_id+1):
                 x = data.iloc[i, :-1]
                 y = data.iloc[i, -1]
                 y_pred = self.model.predict_one(x)
                 n += 1
                 e += (y!=y_pred)+0
+                new_window.append(y==y_pred)
             print('Num examples post retraining = ', n)
             print('Num negatives post retraining = ', e)
             p = e/n
@@ -200,7 +202,7 @@ class SPCAlgorithm:
             self.Pmins[-1] = p
             self.Smins[-1] = s
             self.warn = -1
-            self.window = self.window[-low_bound:]
+            self.window = new_window #self.window[-low_bound:]
             
         else:
             self._model_train(data.iloc[sample_id,:])
