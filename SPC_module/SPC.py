@@ -13,7 +13,7 @@ status_dict = {
 class SPCAlgorithm:
     def __init__(self, init_estimator):
         self.Pmin = 1.0 # initialization
-        self.Smin = 0.0 # initialization
+        self.Smin = np.inf # initialization
         self.num_negative = 0
         self.num_examples = 0
         self.error_rates = [] # for plotting
